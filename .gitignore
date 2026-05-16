@@ -1,3 +1,26 @@
-.my-cli/
-.github/
-RESEARCH_LOG.md
+# Ignore all files
+/*
+
+# Except these files
+!RESEARCH_LOG.md
+!README.md  
+!.gitignore
+
+!saleor-storefront/
+!saleor-platform/
+!saleor-monitoring/
+
+# Continue ignore some minor files and folders
+saleor-platform/*.env
+saleor-platform/*.bk
+saleor-platform/.github/
+
+
+saleor-storefront/.env
+saleor-storefront/AGENTS.md
+saleor-storefront/.github/
+saleor-storefront/.husky/
+saleor-storefront/.cursor/
+saleor-storefront/.vscode/
+saleor-storefront/skills/
+
