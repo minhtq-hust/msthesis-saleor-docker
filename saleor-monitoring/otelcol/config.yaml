@@ -1,0 +1,56 @@
+# OpenTelemetry Collector Configuration
+# Vai trò: Nhận traces từ Saleor API → tạo Prometheus metrics (RED)
+#          + forward traces tới Jaeger.
+#
+# Pipeline:
+#   Saleor API ──(OTLP)──► [receivers/otlp]
+#                               │
+#                     ┌─────────┴──────────┐
+#                     ▼                    ▼
+#           [exporters/otlp]      [connectors/spanmetrics]
+#                 │                        │
+#                 ▼                        ▼
+#              Jaeger              [exporters/prometheus]
+#           (traces UI)                    │
+#                                          ▼
+#                                     Prometheus
+#                                    (metrics DB)
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+connectors:
+  # Chuyển đổi traces → metrics (RED: Rate, Error, Duration)
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+    dimensions:
+      - name: service.name
+      - name: span.name
+      - name: span.kind
+      - name: status.code
+
+exporters:
+  # Forward traces tới Jaeger (cùng compose, dùng service name)
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Expose metrics cho Prometheus scrape
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: otel
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/jaeger, spanmetrics]
+    metrics:
+      receivers: [spanmetrics]
+      exporters: [prometheus]
