@@ -20,7 +20,8 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317  # Listen on all interfaces (localhost + Docker network)
+      
 
 connectors:
   # Chuyển đổi traces → metrics (RED: Rate, Error, Duration)

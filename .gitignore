@@ -24,3 +24,5 @@ saleor-storefront/.cursor/
 saleor-storefront/.vscode/
 saleor-storefront/skills/
 
+saleor-monitoring/*.old
+
