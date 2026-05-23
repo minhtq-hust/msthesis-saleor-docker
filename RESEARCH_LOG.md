@@ -207,7 +207,7 @@
 - **Thực hiện:** Import dashboard JSON vào Grafana qua API.
 
   ```bash
-  # Lệnh import (Basic Auth: admin / Qu@ngm!nh1998 → base64)
+  # Lệnh import (Basic Auth: admin / **** → base64)
   curl -s -X POST 'http://localhost:3000/api/dashboards/db' \
     -H 'Content-Type: application/json' \
     -H 'Authorization: Basic YWRtaW46UXVAbmdtIW5oMTk5OA==' \
