@@ -21,21 +21,31 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317  # Listen on all interfaces (localhost + Docker network)
+      http:
+        endpoint: 0.0.0.0:4318  # HTTP receiver — dùng cho Celery worker (prefork không tương thích gRPC)
       
 
 connectors:
   # Chuyển đổi traces → metrics (RED: Rate, Error, Duration)
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
 exporters:
   # Forward traces tới Jaeger (monitoring stack, dùng container name qua shared network)
-  otlp/jaeger:
-    endpoint: monitoring-jaeger:4317
+  otlp_grpc/jaeger:
+    endpoint: dns:///monitoring-jaeger:4317   # dns:/// scheme → gRPC tự re-resolve khi connection fail
     tls:
       insecure: true
+    balancer_name: round_robin                # Re-resolve DNS khi mất kết nối (mặc định pick_first cache IP mãi)
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 1000                        # Buffer tối đa 1000 batch traces khi Jaeger down
 
   # Expose metrics cho Prometheus scrape
   prometheus:
@@ -46,7 +56,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/jaeger, spanmetrics]
+      exporters: [otlp_grpc/jaeger, span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]

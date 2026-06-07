@@ -20,6 +20,21 @@ services:
     environment:
       - DASHBOARD_URL=http://localhost:9000/
       - ALLOWED_HOSTS=localhost,api,host.docker.internal
+    command:
+      - sh
+      - -c
+      - |
+        pip install --quiet --no-cache-dir \
+          opentelemetry-instrumentation-psycopg==0.53b1 \
+          opentelemetry-instrumentation-redis==0.53b1 \
+          opentelemetry-instrumentation-celery==0.53b1 \
+          opentelemetry-instrumentation-httpx==0.53b1 \
+          opentelemetry-instrumentation-urllib3==0.53b1 && \
+        opentelemetry-instrument uvicorn saleor.asgi:application \
+          --host=0.0.0.0 --port=8000 --lifespan=off \
+          --ws=none --no-server-header --no-access-log \
+          --timeout-keep-alive=35 --timeout-graceful-shutdown=30 \
+          --limit-max-requests=10000
 
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:latest
@@ -40,6 +55,13 @@ services:
     environment:
       - POSTGRES_USER=saleor
       - POSTGRES_PASSWORD=saleor
+    command: >
+      postgres
+        -c shared_preload_libraries=pg_stat_statements
+        -c pg_stat_statements.track=all
+        -c log_min_duration_statement=500
+        -c log_statement=none
+        -c log_line_prefix='%t [%p] %d '
 
   redis:
     image: library/redis:7.0-alpine
@@ -50,10 +72,23 @@ services:
       - saleor-backend-tier
     volumes:
       - saleor-redis:/data
+    command: >
+      redis-server
+        --slowlog-log-slower-than 10000
+        --slowlog-max-len 128
+        --latency-monitor-threshold 50
 
   worker:
     image: docker.io/minhtq2/saleor:1.02
-    command: celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
+    command:
+      - sh
+      - -c
+      - |
+        pip install --quiet --no-cache-dir \
+          opentelemetry-instrumentation-celery==0.53b1 \
+          opentelemetry-instrumentation-psycopg==0.53b1 \
+          opentelemetry-instrumentation-redis==0.53b1 && \
+        opentelemetry-instrument celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
     restart: unless-stopped
     networks:
       - saleor-backend-tier
@@ -66,6 +101,11 @@ services:
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
+    environment:
+      - OTEL_SERVICE_NAME=saleor-worker
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_METRICS_EXPORTER=none
 
   mailpit:
     image: axllent/mailpit

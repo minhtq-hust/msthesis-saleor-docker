@@ -9,6 +9,7 @@
 !saleor-storefront/
 !saleor-platform/
 !saleor-monitoring/
+!loadtest/
 
 # Continue ignore some minor files and folders
 saleor-platform/*.env
@@ -26,3 +27,7 @@ saleor-storefront/skills/
 
 saleor-monitoring/*.old
 
+loadtest/*.env
+loadtest/__pycache__
+loadtest/results/*.csv
+loadtest/results/old/*.csv
