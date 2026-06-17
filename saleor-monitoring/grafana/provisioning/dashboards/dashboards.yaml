@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: "Saleor Dashboards"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30        # Grafana tự reload file mỗi 30 giây nếu file thay đổi
+    allowUiUpdates: true             # Cho phép sửa trên UI (nhưng KHÔNG ghi ngược về file)
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

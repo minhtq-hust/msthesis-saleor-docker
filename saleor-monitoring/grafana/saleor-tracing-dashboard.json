@@ -1,0 +1,508 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "saleor-tracing",
+    "title": "Saleor — Distributed Tracing (Spanmetrics)",
+    "description": "Phân tích distributed tracing từ OTel spanmetrics. Slow operations, error hotspots, service breakdown. Jaeger UI: http://localhost:16686",
+    "tags": ["saleor", "tracing", "jaeger", "spanmetrics", "thesis"],
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "liveNow": false,
+    "refresh": "15s",
+    "schemaVersion": 39,
+    "time": { "from": "now-1h", "to": "now" },
+    "timepicker": {},
+    "version": 1,
+    "links": [
+      {
+        "title": "Open Jaeger UI",
+        "url": "http://localhost:16686",
+        "type": "link",
+        "targetBlank": true,
+        "icon": "external link",
+        "tooltip": "Mở Jaeger UI để xem trace chi tiết"
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "current": {},
+          "hide": 0,
+          "includeAll": false,
+          "multi": false,
+          "name": "DS_PROMETHEUS",
+          "options": [],
+          "query": "prometheus",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        },
+        {
+          "current": { "selected": false, "text": "All", "value": "$__all" },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "definition": "label_values(otel_traces_span_metrics_calls_total, service_name)",
+          "hide": 0,
+          "includeAll": true,
+          "multi": true,
+          "name": "service",
+          "options": [],
+          "query": {
+            "query": "label_values(otel_traces_span_metrics_calls_total, service_name)",
+            "refId": "StandardVariableQuery"
+          },
+          "refresh": 2,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 1,
+          "type": "query",
+          "label": "Service"
+        }
+      ]
+    },
+    "panels": [
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+        "id": 100,
+        "title": "📊 Tracing Overview",
+        "type": "row"
+      },
+      {
+        "id": 1,
+        "title": "Total Spans/s",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_calls_total{service_name=~\"$service\"}[5m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": { "mode": "absolute", "steps": [{ "color": "#5794F2", "value": null }] },
+            "unit": "reqps", "decimals": 2,
+            "mappings": [{ "type": "special", "options": { "match": "null", "result": { "text": "No data" } } }]
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "area",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Error Spans/s",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\", service_name=~\"$service\"}[5m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#73BF69", "value": null },
+                { "color": "#FF9830", "value": 0.1 },
+                { "color": "#F2495C", "value": 1 }
+              ]
+            },
+            "unit": "reqps", "decimals": 3,
+            "mappings": [{ "type": "special", "options": { "match": "null", "result": { "text": "0" } } }]
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "area",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Overall P95 Latency",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.95, sum(rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\"}[5m])) by (le))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#73BF69", "value": null },
+                { "color": "#FF9830", "value": 500 },
+                { "color": "#F2495C", "value": 2000 }
+              ]
+            },
+            "unit": "ms", "decimals": 0,
+            "mappings": [{ "type": "special", "options": { "match": "null", "result": { "text": "No data" } } }]
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "area",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Unique Operations (span types)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "count(sum by (span_name) (rate(otel_traces_span_metrics_calls_total{service_name=~\"$service\"}[5m])) > 0)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": { "mode": "absolute", "steps": [{ "color": "#8AB8FF", "value": null }] },
+            "unit": "short", "decimals": 0
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "none",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+        "id": 200,
+        "title": "⏱️ Latency Analysis by Operation",
+        "type": "row"
+      },
+      {
+        "id": 10,
+        "title": "P95 Latency by Service (timeseries)",
+        "type": "timeseries",
+        "gridPos": { "h": 9, "w": 12, "x": 0, "y": 6 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\"}[5m])))",
+            "legendFormat": "{{service_name}} P95",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\"}[5m])))",
+            "legendFormat": "{{service_name}} P99",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 11,
+        "title": "🐢 Top 20 Slowest Operations — P95 (table)",
+        "type": "table",
+        "gridPos": { "h": 9, "w": 12, "x": 12, "y": 6 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "topk(20, histogram_quantile(0.95, sum by (le, span_name, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\"}[5m]))))",
+            "legendFormat": "{{service_name}} | {{span_name}}",
+            "refId": "A",
+            "instant": true,
+            "format": "table"
+          }
+        ],
+        "transformations": [
+          { "id": "organize", "options": {
+            "renameByName": { "Value": "P95 Latency (ms)", "span_name": "Operation", "service_name": "Service" },
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "le": true, "instance": true }
+          }}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 500 },
+                { "color": "red", "value": 2000 }
+              ]
+            },
+            "custom": {
+              "displayMode": "color-background",
+              "align": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Operation" },
+              "properties": [
+                { "id": "custom.width", "value": 280 },
+                { "id": "custom.displayMode", "value": "auto" }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Service" },
+              "properties": [{ "id": "custom.width", "value": 140 }]
+            }
+          ]
+        },
+        "options": {
+          "sortBy": [{ "displayName": "P95 Latency (ms)", "desc": true }],
+          "footer": { "show": false }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+        "id": 300,
+        "title": "🔴 Error Hotspots",
+        "type": "row"
+      },
+      {
+        "id": 20,
+        "title": "Error Rate Trend by Service (5m)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum by (service_name) (rate(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\", service_name=~\"$service\"}[5m])) / sum by (service_name) (rate(otel_traces_span_metrics_calls_total{service_name=~\"$service\"}[5m])) * 100",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "percent", "min": 0
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 21,
+        "title": "🚨 Top Operations with Errors (table, 5m)",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "topk(15, sum by (span_name, service_name) (rate(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\", service_name=~\"$service\"}[5m])))",
+            "legendFormat": "{{service_name}} | {{span_name}}",
+            "refId": "A",
+            "instant": true,
+            "format": "table"
+          }
+        ],
+        "transformations": [
+          { "id": "organize", "options": {
+            "renameByName": { "Value": "Error Rate (spans/s)", "span_name": "Operation", "service_name": "Service" },
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true }
+          }}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "displayMode": "color-background",
+              "align": "auto"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 0.01 },
+                { "color": "red", "value": 0.1 }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Operation" },
+              "properties": [{ "id": "custom.width", "value": 280 }]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Service" },
+              "properties": [{ "id": "custom.width", "value": 140 }]
+            }
+          ]
+        },
+        "options": {
+          "sortBy": [{ "displayName": "Error Rate (spans/s)", "desc": true }],
+          "footer": { "show": false }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+        "id": 400,
+        "title": "📊 Operation Volume & Distribution",
+        "type": "row"
+      },
+      {
+        "id": 30,
+        "title": "Request Rate by Operation (stacked, top 15)",
+        "type": "timeseries",
+        "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "topk(15, sum by (span_name) (rate(otel_traces_span_metrics_calls_total{service_name=~\"$service\"}[5m])))",
+            "legendFormat": "{{span_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "bars", "lineWidth": 0, "fillOpacity": 80,
+              "showPoints": "never", "spanNulls": true,
+              "stacking": { "mode": "normal", "group": "A" }
+            },
+            "unit": "reqps"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+        "id": 500,
+        "title": "🔗 DB & Cache Span Analysis",
+        "type": "row"
+      },
+      {
+        "id": 40,
+        "title": "DB Span Latency P95 (psycopg traces)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{span_name=~\".*SELECT.*|.*INSERT.*|.*UPDATE.*|.*DELETE.*|postgresql.*|db\\..*\"}[5m])))",
+            "legendFormat": "{{span_name}} P95",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 41,
+        "title": "Redis / Cache Span Latency P95",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{span_name=~\".*redis.*|.*REDIS.*|.*GET|.*SET|.*HGET.*|.*cache.*\"}[5m])))",
+            "legendFormat": "{{span_name}} P95",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+
+      {
+        "id": 42,
+        "title": "💡 How to use Jaeger for trace details",
+        "type": "text",
+        "gridPos": { "h": 4, "w": 24, "x": 0, "y": 43 },
+        "options": {
+          "mode": "markdown",
+          "content": "## 🔗 Xem trace chi tiết trong Jaeger\n\nCác panel trên dùng **spanmetrics** từ Prometheus — cho thấy *thống kê* theo thời gian.\n\nĐể xem **trace cụ thể** (đầy đủ call stack, span cha/con):\n1. Mở [Jaeger UI](http://localhost:16686)\n2. Chọn **Service**: `saleor` hoặc `saleor-worker`\n3. Filter theo **Operation Name** lấy từ bảng \"Slowest Operations\" hoặc \"Error Hotspots\" ở trên\n4. Set **Min Duration** để tìm traces chậm\n\n> **Tip**: Copy span_name từ bảng trên → dán vào field **Operation** của Jaeger để tìm trace tương ứng."
+        }
+      }
+
+    ]
+  },
+  "overwrite": true
+}

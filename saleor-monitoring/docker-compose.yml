@@ -4,8 +4,17 @@ services:
     container_name: monitoring-grafana
     ports:
       - "3000:3000"
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      # Tắt login form nếu muốn truy cập nhanh (optional, bỏ comment để dùng)
+      # - GF_AUTH_ANONYMOUS_ENABLED=true
+      # - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - grafana_data:/var/lib/grafana
+      # ── Provisioning: datasource + dashboard provider ──────────────
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # ── Dashboard JSON files (auto-reload mỗi 30s) ─────────────────
+      - ./grafana/provisioning/dashboards/json:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
     networks:
       - saleor_net
@@ -45,6 +54,30 @@ services:
     pid: host
     devices:
       - /dev/kmsg
+    restart: unless-stopped
+    networks:
+      - saleor_net
+
+  # === Database Exporters ===
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: monitoring-postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      - DATA_SOURCE_NAME=postgresql://saleor:saleor@db:5432/saleor?sslmode=disable
+    restart: unless-stopped
+    networks:
+      - saleor_net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: monitoring-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
     restart: unless-stopped
     networks:
       - saleor_net

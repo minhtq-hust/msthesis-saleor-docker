@@ -9,8 +9,12 @@ services:
     stdin_open: true
     tty: true
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
@@ -96,16 +100,17 @@ services:
       - common.env
       - backend.env
     depends_on:
-      - redis
-      - mailpit
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
     environment:
       - OTEL_SERVICE_NAME=saleor-worker
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-      - OTEL_METRICS_EXPORTER=none
 
   mailpit:
     image: axllent/mailpit

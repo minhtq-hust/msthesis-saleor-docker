@@ -26,3 +26,15 @@ scrape_configs:
     static_configs:
       - targets: ['platform-otel-collector:8889']
     scrape_interval: 15s
+
+  # Scrape PostgreSQL metrics từ postgres_exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 15s
+
+  # Scrape Redis metrics từ redis_exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s

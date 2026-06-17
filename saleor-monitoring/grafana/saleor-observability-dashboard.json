@@ -29,6 +29,26 @@
           "regex": "",
           "skipUrlSync": false,
           "type": "datasource"
+        },
+        {
+          "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "definition": "label_values(otel_traces_span_metrics_calls_total, service_name)",
+          "hide": 0,
+          "includeAll": true,
+          "label": "Service",
+          "multi": true,
+          "name": "service_filter",
+          "options": [],
+          "query": {
+            "query": "label_values(otel_traces_span_metrics_calls_total, service_name)",
+            "refId": "StandardVariableQuery"
+          },
+          "refresh": 2,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 1,
+          "type": "query"
         }
       ]
     },
@@ -884,6 +904,553 @@
             "sort": "desc"
           }
         }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+        "id": 500,
+        "title": "🎯 Service-Level RED — per service",
+        "type": "row"
+      },
+      {
+        "id": 50,
+        "title": "Request Rate by Service",
+        "description": "R — Rate: số request/s theo từng service. Dùng biến $service_filter để so sánh các thành phần.",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 40 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum by (service_name) (rate(otel_traces_span_metrics_calls_total{service_name=~\"$service_filter\"}[5m]))",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15,
+              "gradientMode": "scheme", "showPoints": "never", "spanNulls": true
+            },
+            "unit": "reqps"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 51,
+        "title": "Error Rate by Service (%)",
+        "description": "E — Errors: tỷ lệ lỗi theo từng service. Ngưỡng cảnh báo: >1% orange, >5% red.",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 40 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum by (service_name) (rate(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\",service_name=~\"$service_filter\"}[5m])) / sum by (service_name) (rate(otel_traces_span_metrics_calls_total{service_name=~\"$service_filter\"}[5m])) * 100",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "percent", "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 52,
+        "title": "P95 / P99 Latency by Service (ms)",
+        "description": "D — Duration: latency percentile P95 và P99 theo từng service. P95 = 95% request hoàn thành trong thời gian này.",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 40 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service_filter\"}[5m])))",
+            "legendFormat": "{{service_name}} P95",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service_filter\"}[5m])))",
+            "legendFormat": "{{service_name}} P99",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "ms",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 500 },
+                { "color": "red", "value": 2000 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 53,
+        "title": "Avg Latency by Service (ms)",
+        "description": "Latency trung bình theo service. So sánh với P95: nếu avg thấp nhưng P95 cao → có outlier nặng (long-tail problem).",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_sum{service_name=~\"$service_filter\"}[5m])) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count{service_name=~\"$service_filter\"}[5m]))",
+            "legendFormat": "{{service_name}} avg",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8,
+              "gradientMode": "scheme", "showPoints": "never", "spanNulls": true
+            },
+            "unit": "ms",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 300 },
+                { "color": "red", "value": 1000 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 54,
+        "title": "Apdex Score by Service",
+        "description": "Apdex = (satisfied + 0.5×tolerated) / total. Satisfied: <250ms, Tolerated: 250ms–1000ms, Frustrated: >1000ms. Score 1.0 = perfect, <0.7 = poor.",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "(sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\",service_name=~\"$service_filter\"}[5m])) + 0.5 * (sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"1000\",service_name=~\"$service_filter\"}[5m])) - sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\",service_name=~\"$service_filter\"}[5m])))) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count{service_name=~\"$service_filter\"}[5m]))",
+            "legendFormat": "{{service_name}} Apdex",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10,
+              "gradientMode": "scheme", "showPoints": "never", "spanNulls": true
+            },
+            "unit": "short",
+            "min": 0, "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 0.7 },
+                { "color": "green", "value": 0.9 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "min", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+        "id": 600,
+        "title": "💾 Disk I/O per Container (cAdvisor)",
+        "type": "row"
+      },
+      {
+        "id": 60,
+        "title": "Disk Read (bytes/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 7, "w": 12, "x": 0, "y": 58 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "rate(container_fs_reads_bytes_total{service=~\".+\"}[5m])",
+            "legendFormat": "{{service}} read",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "Bps"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 61,
+        "title": "Disk Write (bytes/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 7, "w": 12, "x": 12, "y": 58 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "rate(container_fs_writes_bytes_total{service=~\".+\"}[5m])",
+            "legendFormat": "{{service}} write",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "Bps"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 62,
+        "title": "Disk Read Ops/s",
+        "type": "timeseries",
+        "gridPos": { "h": 7, "w": 12, "x": 0, "y": 65 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "rate(container_fs_reads_total{service=~\".+\"}[5m])",
+            "legendFormat": "{{service}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60,
+              "showPoints": "never", "spanNulls": true,
+              "stacking": { "mode": "normal", "group": "A" }
+            },
+            "unit": "iops"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+      {
+        "id": 63,
+        "title": "Disk Write Ops/s",
+        "type": "timeseries",
+        "gridPos": { "h": 7, "w": 12, "x": 12, "y": 65 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "rate(container_fs_writes_total{service=~\".+\"}[5m])",
+            "legendFormat": "{{service}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60,
+              "showPoints": "never", "spanNulls": true,
+              "stacking": { "mode": "normal", "group": "A" }
+            },
+            "unit": "iops"
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 },
+        "id": 700,
+        "title": "🎯 SLO / Availability Tracking",
+        "type": "row"
+      },
+      {
+        "id": 70,
+        "title": "Availability (last 24h)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 73 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "(1 - sum(increase(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[24h])) / sum(increase(otel_traces_span_metrics_calls_total[24h]))) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#F2495C", "value": null },
+                { "color": "#FF9830", "value": 99 },
+                { "color": "#73BF69", "value": 99.9 }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 3,
+            "mappings": [{ "type": "special", "options": { "match": "null", "result": { "text": "No traffic" } } }]
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "none",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 71,
+        "title": "Requests within SLO < 500ms (last 5m)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 73 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"500\"}[5m])) / sum(rate(otel_traces_span_metrics_duration_milliseconds_count[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#F2495C", "value": null },
+                { "color": "#FF9830", "value": 90 },
+                { "color": "#73BF69", "value": 95 }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 1,
+            "mappings": [{ "type": "special", "options": { "match": "null", "result": { "text": "No traffic" } } }]
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "none",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 72,
+        "title": "Total Requests (last 1h)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 73 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(increase(otel_traces_span_metrics_calls_total[1h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": { "mode": "absolute", "steps": [{ "color": "#5794F2", "value": null }] },
+            "unit": "short",
+            "decimals": 0
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "area",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 73,
+        "title": "Total Errors (last 1h)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 73 },
+        "transparent": true,
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(increase(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[1h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#73BF69", "value": null },
+                { "color": "#FF9830", "value": 10 },
+                { "color": "#F2495C", "value": 100 }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0
+          }
+        },
+        "options": {
+          "colorMode": "background", "graphMode": "area",
+          "justifyMode": "center", "textMode": "auto",
+          "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        }
+      },
+      {
+        "id": 74,
+        "title": "Availability Trend (rolling 5m window)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "(1 - sum(rate(otel_traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(otel_traces_span_metrics_calls_total[5m]))) * 100",
+            "legendFormat": "Availability %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "fixedColor": "#73BF69", "mode": "fixed" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20,
+              "showPoints": "never", "spanNulls": true,
+              "thresholdsStyle": { "mode": "line+area" }
+            },
+            "unit": "percent",
+            "min": 95, "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "#F2495C", "value": null },
+                { "color": "#FF9830", "value": 99 },
+                { "color": "#73BF69", "value": 99.9 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        }
+      },
+      {
+        "id": 75,
+        "title": "SLO: Requests within 500ms (%)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 77 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"500\"}[5m])) / sum(rate(otel_traces_span_metrics_duration_milliseconds_count[5m])) * 100",
+            "legendFormat": "< 500ms SLO",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\"}[5m])) / sum(rate(otel_traces_span_metrics_duration_milliseconds_count[5m])) * 100",
+            "legendFormat": "< 250ms fast",
+            "refId": "B"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum(rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"2500\"}[5m])) / sum(rate(otel_traces_span_metrics_duration_milliseconds_count[5m])) * 100",
+            "legendFormat": "< 2500ms acceptable",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5,
+              "showPoints": "never", "spanNulls": true
+            },
+            "unit": "percent",
+            "min": 0, "max": 100
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom" },
+          "tooltip": { "mode": "multi", "sort": "desc" }
+        }
       }
     ],
     "refresh": "10s",
@@ -893,7 +1460,7 @@
       "to": "now"
     },
     "timepicker": {},
-    "version": 0
+    "version": 1
   },
   "overwrite": true
 }

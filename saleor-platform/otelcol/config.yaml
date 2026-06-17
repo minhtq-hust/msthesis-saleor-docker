@@ -15,6 +15,19 @@
 #                                          ▼
 #                                     Prometheus
 #                                    (metrics DB)
+#
+# ─── Giải quyết vấn đề DNS race condition ─────────────────────────────────
+# Khi restart, Jaeger container có thể chưa đăng ký vào Docker DNS khi
+# otel-collector bắt đầu resolve. Cấu hình này giải quyết bằng:
+#   1. dns:/// scheme → gRPC liên tục re-resolve DNS (không cache IP)
+#   2. wait_for_ready: true → gRPC chờ connection sẵn sàng trước khi send
+#   3. retry_on_failure với initial_interval dài → chịu được Jaeger chưa start
+#   4. health_check extension → expose /health/ready endpoint cho monitoring
+# ──────────────────────────────────────────────────────────────────────────
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 receivers:
   otlp:
@@ -23,7 +36,7 @@ receivers:
         endpoint: 0.0.0.0:4317  # Listen on all interfaces (localhost + Docker network)
       http:
         endpoint: 0.0.0.0:4318  # HTTP receiver — dùng cho Celery worker (prefork không tương thích gRPC)
-      
+
 
 connectors:
   # Chuyển đổi traces → metrics (RED: Rate, Error, Duration)
@@ -38,14 +51,17 @@ exporters:
     endpoint: dns:///monitoring-jaeger:4317   # dns:/// scheme → gRPC tự re-resolve khi connection fail
     tls:
       insecure: true
+    wait_for_ready: true                      # Chờ kết nối sẵn sàng, không drop traces khi Jaeger chưa start
     balancer_name: round_robin                # Re-resolve DNS khi mất kết nối (mặc định pick_first cache IP mãi)
     retry_on_failure:
       enabled: true
-      initial_interval: 5s
-      max_interval: 30s
+      initial_interval: 10s                  # Thời gian chờ lần đầu (cho Jaeger có thời gian start)
+      max_interval: 60s                      # Max backoff 60s
+      max_elapsed_time: 300s                 # Retry tối đa 5 phút (đủ cho Jaeger healthy hoàn toàn)
     sending_queue:
       enabled: true
-      queue_size: 1000                        # Buffer tối đa 1000 batch traces khi Jaeger down
+      queue_size: 5000                       # Buffer 5000 batch traces khi Jaeger down
+      num_consumers: 4                       # 4 goroutine xử lý queue song song
 
   # Expose metrics cho Prometheus scrape
   prometheus:
@@ -53,6 +69,7 @@ exporters:
     namespace: otel
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
