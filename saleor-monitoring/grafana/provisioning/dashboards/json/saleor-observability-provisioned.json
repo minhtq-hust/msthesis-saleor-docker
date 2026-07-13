@@ -1659,8 +1659,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service_filter\"}[5m])))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket[5m])))",
           "legendFormat": "{{service_name}} P95",
+          "range": true,
           "refId": "A"
         },
         {
@@ -1668,8 +1670,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service_filter\"}[5m])))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket[5m])))",
           "legendFormat": "{{service_name}} P99",
+          "range": true,
           "refId": "B"
         }
       ],
@@ -1776,8 +1780,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_sum{service_name=~\"$service_filter\"}[5m])) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count{service_name=~\"$service_filter\"}[5m]))",
+          "editorMode": "code",
+          "expr": "sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_sum[5m])) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count[5m]))",
           "legendFormat": "{{service_name}} avg",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -1886,8 +1892,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\",service_name=~\"$service_filter\"}[5m])) + 0.5 * (sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"1000\",service_name=~\"$service_filter\"}[5m])) - sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\",service_name=~\"$service_filter\"}[5m])))) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count{service_name=~\"$service_filter\"}[5m]))",
+          "editorMode": "code",
+          "expr": "(sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\"}[5m])) + 0.5 * (sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"1000\"}[5m])) - sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_bucket{le=\"250\"}[5m])))) / sum by (service_name) (rate(otel_traces_span_metrics_duration_milliseconds_count[5m]))",
           "legendFormat": "{{service_name}} Apdex",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -2837,5 +2845,5 @@
   "timezone": "browser",
   "title": "Saleor Observability",
   "uid": "saleor-observability",
-  "version": 12
+  "version": 17
 }

@@ -23,7 +23,7 @@ services:
       - backend.env
     environment:
       - DASHBOARD_URL=http://localhost:9000/
-      - ALLOWED_HOSTS=localhost,api,host.docker.internal
+      - ALLOWED_HOSTS=localhost,api,host.docker.internal,11.1.11.136
     command:
       - sh
       - -c
