@@ -525,3 +525,98 @@
   4. **PostgreSQL và Redis không cần OTel trực tiếp** — tracing từ phía client (psycopg, redis instrumentor) đã đủ. Phía server chỉ cần cơ chế monitoring nội bộ (pg_stat_statements, slowlog) để bổ sung góc nhìn aggregate.
   5. **`opentelemetry-instrument` hoạt động bằng monkey-patching** — nó thay thế hàm gốc của thư viện bằng phiên bản có thêm logic tạo span. Đây là lý do cần cài đúng version gói instrumentation khớp với version OTel SDK (`==0.53b1` khớp với `opentelemetry-sdk 1.32.1`).
   6. **YAML `>` (folded block scalar) không phù hợp cho `sh -c` command phức tạp** — nó nối các dòng thành 1 dòng nhưng xử lý indentation sai. Dùng YAML list format `[sh, -c, |]` cho multiline shell scripts trong docker-compose.
+
+## [2026-07-19] - Chuyển API từ Uvicorn đơn luồng sang Gunicorn + UvicornWorker
+
+- **Hypothesis:** Thay thế `opentelemetry-instrument uvicorn` bằng Gunicorn (với `UvicornWorker`) để có nhiều worker process, tăng khả năng xử lý đồng thời, trong khi vẫn giữ nguyên tính chính xác của OTel tracing.
+
+- **Technical Implementation:**
+
+  ### Vấn đề với cấu hình cũ (Uvicorn single-worker):
+  Cấu hình trước dùng `opentelemetry-instrument uvicorn ... --workers` bị giới hạn ở **1 worker** do xung đột giữa `opentelemetry-instrument` và Uvicorn multi-worker mode (Uvicorn dùng `multiprocessing.spawn`, child processes không kế thừa TracerProvider từ parent). Tuy nhiên, với multi-tenant load test, 1 worker là bottleneck.
+
+  ### Giải pháp: Gunicorn + UvicornWorker + `post_fork()` hook
+
+  **Tại sao Gunicorn lại khác?** Gunicorn dùng `os.fork()` (không phải `spawn`) để tạo worker processes. Điều này có nghĩa là:
+  - Gunicorn master fork → tạo worker con
+  - `post_fork(server, worker)` hook chạy **trong process con**, sau khi fork đã hoàn tất
+  - Mỗi worker con khởi tạo TracerProvider riêng của mình (không kế thừa từ cha)
+  - Không có C-level thread nào bị corrupt vì OTel init xảy ra **sau** fork
+
+  ```python
+  # gunicorn_conf.py
+  bind = '0.0.0.0:8000'
+  workers = 2
+  worker_class = 'uvicorn.workers.UvicornWorker'
+
+  def post_fork(server, worker):
+      # Chạy trong worker process, sau fork()
+      provider = TracerProvider(resource=Resource.create({'service.name': ...}))
+      provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(...)))
+      trace.set_tracer_provider(provider)
+      # Instrument psycopg, redis, httpx, urllib3, celery
+      ...
+      server.log.info('Worker %s: OTel initialized', worker.pid)
+  ```
+
+  ### Thay đổi trong `docker-compose.yml` (service `api`):
+
+  | | Trước (Uvicorn) | Sau (Gunicorn) |
+  |---|---|---|
+  | Command | `opentelemetry-instrument uvicorn saleor.asgi:application --host=0.0.0.0 ...` | `gunicorn saleor.asgi:application -c gunicorn_conf.py` |
+  | Workers | 1 (bắt buộc do spawn conflict) | 2 (fork-based, OTel-safe) |
+  | OTel init | CLI wrapper (`opentelemetry-instrument`) | `post_fork()` hook trong gunicorn_conf.py |
+  | Volume mới | — | `./gunicorn_conf.py:/app/gunicorn_conf.py:ro` |
+  | pip install | Không có gunicorn | Thêm `gunicorn` (image chỉ có uvicorn 0.32.1) |
+
+  ### Sự cố phát hiện và fix:
+  Image `minhtq2/saleor:1.02` **không có `gunicorn`** — chỉ có `uvicorn 0.32.1`. Command ban đầu chỉ cài các OTel packages mà quên cài `gunicorn` → container crash-loop 72 lần với lỗi `sh: gunicorn: not found`. Fix: thêm `gunicorn` vào lệnh `pip install` trong docker-compose.yml.
+
+  ### Span tree thực tế sau khi chuyển sang Gunicorn (xác nhận qua Jaeger):
+
+  ```
+  traceparent: 00-9ae70bf3b0a3c0ea0c14ebb39d0d509e-...-01
+  Total spans: 7
+
+  [saleor] /graphql/                          ← root span, kind=server, 333ms
+    [saleor] { shop { name description } }    ← GraphQL span, kind=internal, 327ms
+      [saleor] SiteByIdLoader                 ← DataLoader span, 233ms
+      [saleor] SELECT                         ← psycopg DB span, kind=client, 33ms
+  ```
+
+  **Span tree y hệt cấu hình Uvicorn thuần** — `service.name=saleor`, root span `kind=server`, đầy đủ hierarchy.
+
+  ### Phân tích: Gunicorn có làm sai lệch span không?
+
+  **Không.** Gunicorn master process (PID 10) **không xử lý HTTP request** — nó chỉ là process manager. Request được dispatch tới Uvicorn worker (PID 27/29/44...) để xử lý. OTel init trong `post_fork()` hook đảm bảo mỗi worker có TracerProvider riêng. Spans được tạo **hoàn toàn trong worker process** và gửi đến OTel Collector. Không có span nào từ Gunicorn master.
+
+  So sánh đầy đủ:
+
+  | Tiêu chí | Uvicorn đơn luồng | Gunicorn + UvicornWorker |
+  |---|---|---|
+  | Root span `kind` | `server` | `server` — giống nhau |
+  | `service.name` | `saleor` | `saleor` — giống nhau |
+  | Span hierarchy | Đầy đủ | Đầy đủ — giống nhau |
+  | Exporter | 1 BatchSpanProcessor | 1 BatchSpanProcessor **mỗi worker** (độc lập) |
+  | Concurrency | 1 event loop | 2 processes song song |
+  | TracerProvider init | CLI wrapper (parent process) | `post_fork()` (mỗi worker) |
+
+  ### Warning `Overriding of current TracerProvider is not allowed` (vô hại):
+
+  Mỗi worker khi load Django app gặp env vars `OTEL_TRACES_EXPORTER=otlp` và cố khởi tạo TracerProvider lần 2 (sau khi `post_fork()` đã set ở lần 1). OTel SDK từ chối ghi đè → warning, nhưng Provider đầu tiên (từ `post_fork()`) vẫn hoạt động đúng. Traces chính xác, warning vô hại — có thể fix bằng cách bỏ biến `OTEL_TRACES_EXPORTER` trong env (để `post_fork()` là nguồn duy nhất), nhưng tạm thời chấp nhận được.
+
+  ### Các file thay đổi:
+  | File | Thay đổi |
+  |------|----------|
+  | `saleor-platform/docker-compose.yml` | API command: đổi từ `opentelemetry-instrument uvicorn` sang `gunicorn -c gunicorn_conf.py`; thêm `gunicorn` vào pip install; thêm volume mount `gunicorn_conf.py` |
+  | `saleor-platform/gunicorn_conf.py` | Tạo mới — cấu hình Gunicorn với `workers=2`, `worker_class=uvicorn.workers.UvicornWorker`, `post_fork()` hook khởi tạo OTel cho mỗi worker |
+
+- **Outcome:** SUCCESS. API chạy với 2 Uvicorn workers, OTel tracing chính xác (7 spans/request, đúng hierarchy), monitoring nhận đủ 167 span_metrics series, GraphQL HTTP 200 trong 0.19s.
+
+- **AI Analysis:** Việc chuyển sang Gunicorn + UvicornWorker giải quyết được bottleneck single-worker của cấu hình `opentelemetry-instrument uvicorn` trước đó. Chìa khóa kỹ thuật là `post_fork()` hook — đây là pattern chuẩn để khởi tạo OTel trong môi trường prefork, được Gunicorn hỗ trợ native. Pattern này an toàn với `fork()` vì không có C-level thread nào tồn tại trước thời điểm hook chạy. Khác với Uvicorn `--workers` (dùng `spawn`), Gunicorn `fork()` giữ nguyên file descriptors và memory layout — OTel init trong `post_fork()` là safe và idempotent per-worker.
+
+- **Key Lessons:**
+  1. **`os.fork()` vs `multiprocessing.spawn`** — Gunicorn dùng `fork()` nên OTel có thể init an toàn trong `post_fork()` hook. Uvicorn multi-worker dùng `spawn()` (process mới hoàn toàn) nên không thể dùng cách này — phải chạy single-worker với `opentelemetry-instrument` wrapper.
+  2. **Gunicorn master không tạo span** — master chỉ là process manager, không xử lý HTTP. Tất cả spans đến từ Uvicorn worker processes. Span tree trong Jaeger hoàn toàn chính xác và không bị ảnh hưởng bởi Gunicorn layer.
+  3. **Luôn kiểm tra image có sẵn binary cần dùng không** — `gunicorn: not found` chứng minh việc thêm tool mới vào command mà không kiểm tra image trước là rủi ro. Cần kiểm tra `pip list` hoặc `which <binary>` trước khi thay đổi entrypoint.
+  4. **Double-init TracerProvider** — khi dùng `post_fork()` kết hợp env vars `OTEL_*`, cần chọn một nguồn duy nhất để init. `post_fork()` và env vars cùng tồn tại tạo ra warning nhưng không gây lỗi (provider đầu tiên thắng).

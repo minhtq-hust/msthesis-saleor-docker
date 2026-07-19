@@ -18,6 +18,7 @@ services:
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
+      - ./gunicorn_conf.py:/app/gunicorn_conf.py:ro
     env_file:
       - common.env
       - backend.env
@@ -29,16 +30,13 @@ services:
       - -c
       - |
         pip install --quiet --no-cache-dir \
+          gunicorn \
           opentelemetry-instrumentation-psycopg==0.53b1 \
           opentelemetry-instrumentation-redis==0.53b1 \
           opentelemetry-instrumentation-celery==0.53b1 \
           opentelemetry-instrumentation-httpx==0.53b1 \
           opentelemetry-instrumentation-urllib3==0.53b1 && \
-        opentelemetry-instrument uvicorn saleor.asgi:application \
-          --host=0.0.0.0 --port=8000 --lifespan=off \
-          --ws=none --no-server-header --no-access-log \
-          --timeout-keep-alive=35 --timeout-graceful-shutdown=30 \
-          --limit-max-requests=10000
+        gunicorn saleor.asgi:application -c gunicorn_conf.py
 
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:latest
@@ -109,6 +107,7 @@ services:
     volumes:
       # shared volume between worker and api for media
       - saleor-media:/app/media
+      - ./gunicorn_conf.py:/app/gunicorn_conf.py:ro
     environment:
       - OTEL_SERVICE_NAME=saleor-worker
 
