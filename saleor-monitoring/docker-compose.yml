@@ -34,6 +34,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
     restart: unless-stopped
     networks:
       - saleor_net
@@ -87,6 +88,12 @@ services:
   jaeger:
     image: jaegertracing/jaeger
     container_name: monitoring-jaeger
+    # Badger cần tạo subdirectories trong volume mount (owned by root)
+    # Jaeger mặc định chạy UID 10001 → permission denied
+    # Chạy root trong container (an toàn nhờ Docker isolation, giống Prometheus)
+    user: root
+    command:
+      - '--config=/etc/jaeger/config.yaml'
     ports:
       - "16686:16686"   # Jaeger UI
       - "4317"          # OTLP gRPC (chỉ internal, không expose ra host)
@@ -95,12 +102,13 @@ services:
     networks:
       - saleor_net
     volumes:
-      - type: tmpfs
-        target: /tmp
+      - ./jaeger/config.yaml:/etc/jaeger/config.yaml:ro
+      - jaeger_data:/tmp/jaeger
 
 volumes:
   grafana_data:
   prometheus_data:
+  jaeger_data:
 
 networks:
   saleor_net:

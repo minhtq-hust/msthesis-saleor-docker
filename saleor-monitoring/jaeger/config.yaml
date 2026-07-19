@@ -1,0 +1,66 @@
+# Jaeger v2 Configuration — Badger persistent storage
+#
+# Jaeger v2 dùng OTel Collector config format.
+# Chuyển từ in-memory (mặc định) sang Badger (embedded KV store)
+# để traces được persist qua restart.
+#
+# Storage layout:
+#   /badger/data/keys   — Badger key directory
+#   /badger/data/values — Badger value directory
+#
+# TTL: 7 ngày (168 giờ) — traces cũ hơn sẽ tự động bị xóa
+# Reference: https://github.com/jaegertracing/jaeger/blob/v2.18.0/cmd/jaeger/config-badger.yaml
+
+extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+      endpoint: 0.0.0.0:13133
+
+  jaeger_query:
+    storage:
+      traces: badger_store
+    ui:
+      config_file: ""
+
+  jaeger_storage:
+    backends:
+      badger_store:
+        badger:
+          directories:
+            keys: /tmp/jaeger/keys
+            values: /tmp/jaeger/values
+          ephemeral: false
+          ttl:
+            spans: 168h                 # 7 ngày retention
+          maintenance_interval: 5m
+
+  zpages:
+    endpoint: 0.0.0.0:27778
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: badger_store
+
+service:
+  extensions:
+    - jaeger_storage
+    - jaeger_query
+    - healthcheckv2
+    - zpages
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
