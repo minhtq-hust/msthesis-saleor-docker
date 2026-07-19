@@ -13,7 +13,7 @@
 
 # Continue ignore some minor files and folders
 saleor-platform/*.env
-saleor-platform/*.bk
+saleor-platform/*.bk*
 saleor-platform/.github/
 
 
