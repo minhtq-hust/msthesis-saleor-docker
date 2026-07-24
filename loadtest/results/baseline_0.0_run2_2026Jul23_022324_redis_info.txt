@@ -1,7 +1,0 @@
-total_commands_processed:6632
-evicted_keys:0
-keyspace_hits:19
-keyspace_misses:105
-used_memory_human:1.62M
-mem_fragmentation_ratio:4.82
-mem_fragmentation_bytes:6352552

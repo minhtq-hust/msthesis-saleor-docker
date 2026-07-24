@@ -1,0 +1,11 @@
+query_short,calls,mean_ms,total_ms,rows,buffer_hit_pct,stddev_ms
+"DECLARE ""_django_curs_140401197442752_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,316.72,316.72,0,100.0,0.00
+"DECLARE ""_django_curs_140401709135552_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,256.76,256.76,0,100.0,0.00
+"DECLARE ""_django_curs_140402799662784_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,162.37,162.37,0,100.0,0.00
+"DECLARE ""_django_curs_140402808055488_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""product_productvariantchannellistin",1,147.58,147.58,0,100.0,0.00
+"DECLARE ""_django_curs_140401155479232_sync_3"" NO SCROLL CURSOR FOR SELECT ""discount_promotionrule"".""id"", ""discount_promo",1,141.22,141.22,0,100.0,0.00
+"DECLARE ""_django_curs_140402799662784_sync_3"" NO SCROLL CURSOR FOR SELECT ""discount_promotionrule"".""id"", ""discount_promo",1,131.52,131.52,0,100.0,0.00
+"DECLARE ""_django_curs_140402279577280_sync_3"" NO SCROLL CURSOR FOR SELECT ""discount_promotionrule"".""id"", ""discount_promo",1,130.47,130.47,0,100.0,0.00
+"DECLARE ""_django_curs_140401717528256_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,121.94,121.94,0,100.0,0.00
+"DECLARE ""_django_curs_140403176797888_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,113.88,113.88,0,100.0,0.00
+"DECLARE ""_django_curs_140403171903168_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,109.61,109.61,0,100.0,0.00
