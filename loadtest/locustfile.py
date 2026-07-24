@@ -245,6 +245,19 @@ _variant_ids: list[str] = []
 _variant_lock = threading.Lock()
 
 
+def _safe_json(res, step_name: str):
+    """Parse JSON from response; return None and log a warning on failure."""
+    if not res.text:
+        print(f"[WARN] {step_name}: empty response body (HTTP {res.status_code})")
+        return None
+    try:
+        return res.json()
+    except ValueError:
+        print(f"[WARN] {step_name}: non-JSON response (HTTP {res.status_code}): "
+              f"{res.text[:120]!r}")
+        return None
+
+
 def _populate_variants(client) -> None:
     global _variant_ids
     with _variant_lock:
@@ -256,8 +269,9 @@ def _populate_variants(client) -> None:
                   "variables": {"channel": CHANNEL, "first": 100}},
             name="_setup/variants",
         )
+        data = _safe_json(res, "_setup/variants")
         try:
-            for edge in res.json()["data"]["products"]["edges"]:
+            for edge in data["data"]["products"]["edges"]:
                 for v in edge["node"]["variants"]:
                     _variant_ids.append(v["id"])
         except (KeyError, TypeError):
@@ -297,8 +311,9 @@ def _checkout(client, email: str) -> None:
         "query": CHECKOUT_CREATE,
         "variables": {"channel": CHANNEL, "email": email},
     }, name="checkout/1_create")
+    data = _safe_json(res, "checkout/1_create")
     try:
-        checkout = res.json()["data"]["checkoutCreate"]["checkout"]
+        checkout = data["data"]["checkoutCreate"]["checkout"]
         if not checkout:
             return
         checkout_id = checkout["id"]
@@ -315,8 +330,9 @@ def _checkout(client, email: str) -> None:
         "variables": {"checkoutId": checkout_id,
                       "lines": [{"variantId": variant_id, "quantity": 1}]},
     }, name="checkout/2_add_line")
+    data = _safe_json(res, "checkout/2_add_line")
     try:
-        if res.json()["data"]["checkoutLinesAdd"]["errors"]:
+        if data["data"]["checkoutLinesAdd"]["errors"]:
             return
     except (KeyError, TypeError):
         return
@@ -330,8 +346,9 @@ def _checkout(client, email: str) -> None:
             "address": _TEST_ADDRESS,
         },
     }, name="checkout/3_shipping_addr")
+    data = _safe_json(res, "checkout/3_shipping_addr")
     try:
-        ship_data = res.json()["data"]["checkoutShippingAddressUpdate"]
+        ship_data = data["data"]["checkoutShippingAddressUpdate"]
         if ship_data["errors"]:
             return
         methods = ship_data["checkout"]["availableShippingMethods"]
@@ -348,8 +365,9 @@ def _checkout(client, email: str) -> None:
         "variables": {"checkoutId": checkout_id,
                       "deliveryMethodId": shipping_method_id},
     }, name="checkout/4_delivery")
+    data = _safe_json(res, "checkout/4_delivery")
     try:
-        del_data = res.json()["data"]["checkoutDeliveryMethodUpdate"]
+        del_data = data["data"]["checkoutDeliveryMethodUpdate"]
         if del_data["errors"]:
             return
         total_amount = del_data["checkout"]["totalPrice"]["gross"]["amount"]
@@ -365,8 +383,9 @@ def _checkout(client, email: str) -> None:
             "address": _TEST_ADDRESS,
         },
     }, name="checkout/5_billing_addr")
+    data = _safe_json(res, "checkout/5_billing_addr")
     try:
-        if res.json()["data"]["checkoutBillingAddressUpdate"]["errors"]:
+        if data["data"]["checkoutBillingAddressUpdate"]["errors"]:
             return
     except (KeyError, TypeError):
         return
@@ -384,8 +403,9 @@ def _checkout(client, email: str) -> None:
             },
         },
     }, name="checkout/6_payment")
+    data = _safe_json(res, "checkout/6_payment")
     try:
-        if res.json()["data"]["checkoutPaymentCreate"]["errors"]:
+        if data["data"]["checkoutPaymentCreate"]["errors"]:
             return
     except (KeyError, TypeError):
         return
