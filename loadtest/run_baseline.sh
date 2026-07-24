@@ -15,6 +15,16 @@
 #   ./run_baseline.sh baseline_0.1_run1
 #   ./run_baseline.sh baseline_0.1_run1 50 12m
 #
+# Chế độ chạy (RUN_MODE trong .env):
+#   remote (mặc định) — Locust chạy từ máy khác, SSH vào server collect metrics
+#   local              — Locust chạy trực tiếp trên server (docker exec, ko SSH)
+#
+# Ví dụ remote (từ máy client):
+#   RUN_MODE=remote ./run_baseline.sh baseline_0.0_run1
+#
+# Ví dụ local (trên chính server):
+#   RUN_MODE=local ./run_baseline.sh baseline_0.0_run1
+#
 # Output files (trong $RESULT_DIR/):
 #   <run_id>_stats.csv                — aggregate latency/RPS per endpoint
 #   <run_id>_stats_history.csv        — time-series latency/RPS (15s buckets)
@@ -30,15 +40,32 @@
 
 set -e
 
-# --- Config -------------------------------------------------------------------
-APP_HOST="osboxes@11.1.11.136"
-APP_PORT="8000"
-LOADTEST_DIR="/mnt/appdata/thesis/project/saleor_rmtclient/loadtest"
+# --- Load .env ----------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+  set -a; source "$SCRIPT_DIR/.env"; set +a
+fi
+
+# --- Config from env (with defaults) -----------------------------------------
+RUN_MODE="${RUN_MODE:-remote}"
+APP_SSH_USER="${APP_SSH_USER:-osboxes}"
+APP_TARGET_HOST="${APP_TARGET_HOST:-11.1.11.136}"
+APP_PORT="${APP_PORT:-8000}"
+LOADTEST_DIR="$SCRIPT_DIR"
 RESULT_DIR="$LOADTEST_DIR/results"
-DB_CONTAINER="saleor-platform-db-1"
-REDIS_CONTAINER="saleor-platform-redis-1"
-DB_USER="saleor"
-DB_NAME="saleor"
+DB_CONTAINER="${DB_CONTAINER:-saleor-platform-db-1}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-saleor-platform-redis-1}"
+DB_USER="${DB_USER:-saleor}"
+DB_NAME="${DB_NAME:-saleor}"
+
+# --- Helper: run command on server (local or via SSH) -------------------------
+run_on_server() {
+  if [[ "$RUN_MODE" == "local" ]]; then
+    bash -c "$1"
+  else
+    ssh "${APP_SSH_USER}@${APP_TARGET_HOST}" "$1"
+  fi
+}
 
 # --- Arguments ----------------------------------------------------------------
 RUN_ID="${1:-baseline_run_$(date +%Y%m%d_%H%M%S)}"
@@ -54,7 +81,8 @@ fi
 echo ""
 echo "============================================================"
 echo "  Baseline Run: $RUN_ID"
-echo "  VUs: $VUS | Duration: $DURATION | Host: http://$APP_HOST:$APP_PORT"
+echo "  VUs: $VUS | Duration: $DURATION | Host: http://${APP_TARGET_HOST}:$APP_PORT"
+echo "  Mode: $RUN_MODE"
 echo "============================================================"
 echo ""
 
@@ -69,12 +97,12 @@ T_START_ISO=$(date -Iseconds)
 
 # Reset pg_stat_statements để số liệu chỉ phản ánh run này
 echo "  [A1] Resetting pg_stat_statements..."
-ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME \
+run_on_server "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME \
   -c 'SELECT pg_stat_statements_reset();' -q"
 
 # Ghi pre-run DB connection state (baseline trước khi load)
 echo "  [A2] Snapshotting pre-run DB state..."
-ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c \
+run_on_server "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c \
   \"SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY state;\" \
   --csv" > "$RESULT_DIR/${RUN_ID}_pre_run_connections.txt" 2>/dev/null || true
 
@@ -97,7 +125,7 @@ locust -f locustfile.py \
   --run-time "$DURATION" \
   --csv "$RESULT_DIR/$RUN_ID" \
   --csv-full-history \
-  --host "http://$(echo $APP_HOST | cut -d@ -f2):$APP_PORT" \
+  --host "http://${APP_TARGET_HOST}:$APP_PORT" \
   --loglevel WARNING
 
 echo ""
@@ -112,7 +140,7 @@ echo "[C] Post-run data collection..."
 
 # C1: pg_stat_statements — top 10 slow queries
 echo "  [C1] Collecting slow query data..."
-ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
+run_on_server "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
   \"SELECT
       LEFT(query, 120) AS query_short,
       calls,
@@ -129,7 +157,7 @@ ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c
 
 # C2: pg_stat_activity — connection state breakdown
 echo "  [C2] Collecting DB connection state..."
-ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
+run_on_server "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
   \"SELECT
       state,
       wait_event_type,
@@ -141,7 +169,7 @@ ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c
 
 # C3: pg_locks — lock contention snapshot
 echo "  [C3] Collecting lock contention data..."
-ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
+run_on_server "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c \
   \"SELECT
       relation::regclass AS table_name,
       mode,
@@ -155,10 +183,10 @@ ssh "$APP_HOST" "docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME --csv -c
 
 # C4: Redis INFO — keyspace và memory
 echo "  [C4] Collecting Redis stats..."
-ssh "$APP_HOST" "docker exec $REDIS_CONTAINER redis-cli INFO stats" \
+run_on_server "docker exec $REDIS_CONTAINER redis-cli INFO stats" \
   | grep -E "keyspace_hits|keyspace_misses|evicted_keys|total_commands" \
   > "$RESULT_DIR/${RUN_ID}_redis_info.txt" 2>/dev/null || true
-ssh "$APP_HOST" "docker exec $REDIS_CONTAINER redis-cli INFO memory" \
+run_on_server "docker exec $REDIS_CONTAINER redis-cli INFO memory" \
   | grep -E "used_memory_human|mem_fragmentation" \
   >> "$RESULT_DIR/${RUN_ID}_redis_info.txt" 2>/dev/null || true
 
@@ -203,7 +231,8 @@ cat > "$RESULT_DIR/${RUN_ID}_meta.json" << METAEOF
   "t_end_unix": $T_END,
   "t_start_iso": "$T_START_ISO",
   "t_end_iso": "$T_END_ISO",
-  "app_host": "$APP_HOST",
+  "run_mode": "$RUN_MODE",
+  "app_target_host": "$APP_TARGET_HOST",
   "app_port": $APP_PORT,
   "total_requests": "$TOTAL_REQUESTS",
   "total_failures": "$TOTAL_FAILURES",
@@ -221,7 +250,7 @@ cat > "$RESULT_DIR/${RUN_ID}_meta.json" << METAEOF
   },
   "prometheus_query_range": {
     "note": "Use t_start_unix and t_end_unix to query Prometheus API",
-    "example_cpu": "http://11.1.11.136:9090/api/v1/query_range?query=rate(container_cpu_usage_seconds_total{service=~\".+\"}[1m])*100&start=$T_START&end=$T_END&step=15"
+    "example_cpu": "http://${APP_TARGET_HOST}:9090/api/v1/query_range?query=rate(container_cpu_usage_seconds_total{service=~\".+\"}[1m])*100&start=$T_START&end=$T_END&step=15"
   }
 }
 METAEOF
