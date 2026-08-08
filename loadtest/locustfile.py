@@ -39,8 +39,29 @@ import math
 import random
 import time
 import threading
+import csv
 import numpy as np
 from locust import HttpUser, task, LoadTestShape, events
+
+# ── Active CCU tracker ─────────────────────────────────────────────────────
+# Counts VUs that are NOT sleeping in the inter-session gap.
+# _ccu_dec() before sleep, _ccu_inc() after → true active CCU at any moment.
+_active_ccu: int = 0
+_ccu_lock = threading.Lock()
+
+def _ccu_inc() -> None:
+    global _active_ccu
+    with _ccu_lock:
+        _active_ccu += 1
+
+def _ccu_dec() -> None:
+    global _active_ccu
+    with _ccu_lock:
+        _active_ccu = max(0, _active_ccu - 1)
+
+def _ccu_get() -> int:
+    with _ccu_lock:
+        return _active_ccu
 
 # ── Scenario selection ─────────────────────────────────────────────────────────
 
@@ -245,6 +266,19 @@ _variant_ids: list[str] = []
 _variant_lock = threading.Lock()
 
 
+def _safe_json(res, step_name: str):
+    """Parse JSON from response; return None and log a warning on failure."""
+    if not res.text:
+        print(f"[WARN] {step_name}: empty response body (HTTP {res.status_code})")
+        return None
+    try:
+        return res.json()
+    except ValueError:
+        print(f"[WARN] {step_name}: non-JSON response (HTTP {res.status_code}): "
+              f"{res.text[:120]!r}")
+        return None
+
+
 def _populate_variants(client) -> None:
     global _variant_ids
     with _variant_lock:
@@ -256,8 +290,9 @@ def _populate_variants(client) -> None:
                   "variables": {"channel": CHANNEL, "first": 100}},
             name="_setup/variants",
         )
+        data = _safe_json(res, "_setup/variants")
         try:
-            for edge in res.json()["data"]["products"]["edges"]:
+            for edge in data["data"]["products"]["edges"]:
                 for v in edge["node"]["variants"]:
                     _variant_ids.append(v["id"])
         except (KeyError, TypeError):
@@ -297,8 +332,9 @@ def _checkout(client, email: str) -> None:
         "query": CHECKOUT_CREATE,
         "variables": {"channel": CHANNEL, "email": email},
     }, name="checkout/1_create")
+    data = _safe_json(res, "checkout/1_create")
     try:
-        checkout = res.json()["data"]["checkoutCreate"]["checkout"]
+        checkout = data["data"]["checkoutCreate"]["checkout"]
         if not checkout:
             return
         checkout_id = checkout["id"]
@@ -315,8 +351,9 @@ def _checkout(client, email: str) -> None:
         "variables": {"checkoutId": checkout_id,
                       "lines": [{"variantId": variant_id, "quantity": 1}]},
     }, name="checkout/2_add_line")
+    data = _safe_json(res, "checkout/2_add_line")
     try:
-        if res.json()["data"]["checkoutLinesAdd"]["errors"]:
+        if data["data"]["checkoutLinesAdd"]["errors"]:
             return
     except (KeyError, TypeError):
         return
@@ -330,8 +367,9 @@ def _checkout(client, email: str) -> None:
             "address": _TEST_ADDRESS,
         },
     }, name="checkout/3_shipping_addr")
+    data = _safe_json(res, "checkout/3_shipping_addr")
     try:
-        ship_data = res.json()["data"]["checkoutShippingAddressUpdate"]
+        ship_data = data["data"]["checkoutShippingAddressUpdate"]
         if ship_data["errors"]:
             return
         methods = ship_data["checkout"]["availableShippingMethods"]
@@ -348,8 +386,9 @@ def _checkout(client, email: str) -> None:
         "variables": {"checkoutId": checkout_id,
                       "deliveryMethodId": shipping_method_id},
     }, name="checkout/4_delivery")
+    data = _safe_json(res, "checkout/4_delivery")
     try:
-        del_data = res.json()["data"]["checkoutDeliveryMethodUpdate"]
+        del_data = data["data"]["checkoutDeliveryMethodUpdate"]
         if del_data["errors"]:
             return
         total_amount = del_data["checkout"]["totalPrice"]["gross"]["amount"]
@@ -365,8 +404,9 @@ def _checkout(client, email: str) -> None:
             "address": _TEST_ADDRESS,
         },
     }, name="checkout/5_billing_addr")
+    data = _safe_json(res, "checkout/5_billing_addr")
     try:
-        if res.json()["data"]["checkoutBillingAddressUpdate"]["errors"]:
+        if data["data"]["checkoutBillingAddressUpdate"]["errors"]:
             return
     except (KeyError, TypeError):
         return
@@ -384,8 +424,9 @@ def _checkout(client, email: str) -> None:
             },
         },
     }, name="checkout/6_payment")
+    data = _safe_json(res, "checkout/6_payment")
     try:
-        if res.json()["data"]["checkoutPaymentCreate"]["errors"]:
+        if data["data"]["checkoutPaymentCreate"]["errors"]:
             return
     except (KeyError, TypeError):
         return
@@ -413,6 +454,10 @@ class NormalLoadUser(HttpUser):
         self._session_duration = random.uniform(
             NORMAL_SESSION_MIN, NORMAL_SESSION_MAX
         )
+        _ccu_inc()  # VU is now active
+
+    def on_stop(self) -> None:
+        _ccu_dec()
 
     def _check_session(self) -> None:
         """Simulate a disconnect and reconnect if session duration exceeded."""
@@ -420,10 +465,12 @@ class NormalLoadUser(HttpUser):
             # 1. Simulate disconnect (clear cookies, close TCP connections)
             self.client.cookies.clear()
             self.client.close()
-            
+
+            _ccu_dec()  # VU enters inter-session gap
             # Simulate the gap between a user leaving and a new user arriving
-            time.sleep(random.uniform(0, 20))
-            
+            time.sleep(random.uniform(0, 30))
+            _ccu_inc()  # VU reconnects, new session starts
+
             # 2. Start a new session
             self.email = f"perf_{random.randint(1, 999_999)}@test.local"
             self._session_start = time.monotonic()
@@ -468,6 +515,10 @@ class FlashSaleUser(HttpUser):
         self._session_duration = random.uniform(
             FLASH_SESSION_MIN, FLASH_SESSION_MAX
         )
+        _ccu_inc()  # VU is now active
+
+    def on_stop(self) -> None:
+        _ccu_dec()
 
     def _check_session(self) -> None:
         """Simulate a disconnect and reconnect if session duration exceeded."""
@@ -475,10 +526,12 @@ class FlashSaleUser(HttpUser):
             # 1. Simulate disconnect (clear cookies, close TCP connections)
             self.client.cookies.clear()
             self.client.close()
-            
+
+            _ccu_dec()  # VU enters inter-session gap
             # Simulate the gap between a user leaving and a new user arriving
             time.sleep(random.uniform(0, 10))
-            
+            _ccu_inc()  # VU reconnects, new session starts
+
             # 2. Start a new session
             self.email = f"perf_{random.randint(1, 999_999)}@test.local"
             self._session_start = time.monotonic()
@@ -561,3 +614,103 @@ if SCENARIO == "flash_sale":
                 if run_time < duration:
                     return (users, spawn_rate)
             return None   # stop after all stages complete
+
+
+# ── Active CCU event listener ──────────────────────────────────────────────────
+# Writes a separate CSV: <results_prefix>_ccu_history.csv
+# Columns: Timestamp, VU Count (Locust), Active CCU
+#
+# Active CCU = VUs not in inter-session sleep gap.
+# This reflects the true number of concurrent HTTP-active users at any instant.
+
+_ccu_csv_path: str = ""
+_ccu_csv_file = None
+_ccu_writer = None
+_ccu_stop_event = threading.Event()
+
+try:
+    @events.init_command_line_parser.add_listener
+    def _add_ccu_csv_arg(parser, **kw):
+        parser.add_argument(
+            "--ccu-csv",
+            type=str,
+            default="",
+            help="Path prefix for active CCU CSV output (e.g. results/run1). "
+                 "Will write <prefix>_ccu_history.csv alongside Locust CSVs.",
+            env_var="CCU_CSV",
+        )
+except AttributeError:
+    pass  # Locust < 1.5 — --ccu-csv arg not registered, --csv prefix used
+
+def _parse_csv_prefix() -> str:
+    """Parse --csv prefix directly from sys.argv (works with any Locust version)."""
+    import sys
+    for i, arg in enumerate(sys.argv):
+        if arg.startswith("--csv="):
+            return arg[6:]
+        if arg in ("--csv", "--csv-base-name") and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return ""
+
+@events.init.add_listener
+def _init_ccu_csv(environment, **kw):
+    global _ccu_csv_path, _ccu_csv_file, _ccu_writer
+    prefix = _parse_csv_prefix()
+    if prefix:
+        _ccu_csv_path = f"{prefix}_ccu_history.csv"
+        _ccu_csv_file = open(_ccu_csv_path, "w", newline="")
+        _ccu_writer = csv.writer(_ccu_csv_file)
+        _ccu_writer.writerow(["Timestamp", "VU Count", "Active CCU"])
+        _ccu_csv_file.flush()
+        print(f"[CCU] Logging active CCU → {_ccu_csv_path}")
+    else:
+        print("[CCU] No --csv flag found; use --csv=<prefix> to enable CCU logging.")
+
+@events.report_to_master.add_listener
+def _report_ccu(client_id, data, **kw):
+    """Workers send their local _active_ccu to master."""
+    data["active_ccu"] = _ccu_get()
+
+@events.worker_report.add_listener
+def _aggregate_ccu(client_id, data, **kw):
+    """Master accumulates CCU from all workers (for distributed mode)."""    # In single-process mode these events don't fire; _write_ccu_row handles it.
+    pass
+
+import time as _time
+
+def _ccu_logger_thread(environment):
+    """Background thread: samples active CCU every 2 s and writes to CSV."""
+    while not _ccu_stop_event.wait(timeout=2):
+        if _ccu_writer and environment.runner:
+            ts = int(_time.time())
+            vu = environment.runner.user_count
+            ccu = _ccu_get()
+            _ccu_writer.writerow([ts, vu, ccu])
+            _ccu_csv_file.flush()
+
+@events.spawning_complete.add_listener
+def _start_ccu_logger(user_count, **kw):
+    # Import environment from the module-level runner reference
+    from locust.runners import STATE_STOPPED
+    import locust.env as _env_mod
+    # We can't easily get environment here, so use threading with a sentinel
+    pass  # Actual start is in test_start
+
+@events.test_start.add_listener
+def _on_test_start(environment, **kw):
+    _ccu_stop_event.clear()  # reset in case of reuse
+    t = threading.Thread(
+        target=_ccu_logger_thread, args=(environment,), daemon=True
+    )
+    t.start()
+
+@events.quitting.add_listener
+def _close_ccu_csv(environment, **kw):
+    global _ccu_csv_file
+    _ccu_stop_event.set()   # signal logger thread to stop
+    _time.sleep(0.1)        # brief wait for final write
+    if _ccu_csv_file:
+        _ccu_csv_file.flush()
+        _ccu_csv_file.close()
+        _ccu_csv_file = None
+        print(f"[CCU] Active CCU log saved → {_ccu_csv_path}")

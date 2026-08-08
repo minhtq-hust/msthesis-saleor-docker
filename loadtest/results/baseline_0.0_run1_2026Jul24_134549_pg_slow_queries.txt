@@ -1,0 +1,11 @@
+query_short,calls,mean_ms,total_ms,rows,buffer_hit_pct,stddev_ms
+"DECLARE ""_django_curs_140401742706368_sync_3"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,360.15,360.15,0,100.0,0.00
+"DECLARE ""_django_curs_140403201275584_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,191.94,191.94,0,100.0,0.00
+"DECLARE ""_django_curs_140402799662784_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,172.22,172.22,0,100.0,0.00
+"DECLARE ""_django_curs_140402229221056_sync_3"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,136.60,136.60,0,100.0,0.00
+"DECLARE ""_django_curs_140401692350144_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,126.04,126.04,0,100.0,0.00
+"DECLARE ""_django_curs_140402262791872_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,122.30,122.30,0,100.0,0.00
+"DECLARE ""_django_curs_140402254399168_sync_2"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,118.74,118.74,0,100.0,0.00
+"DECLARE ""_django_curs_140402237613760_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,110.54,110.54,0,100.0,0.00
+"DECLARE ""_django_curs_140403297351360_sync_5"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""attribute_assignedvariantattribute""",1,109.73,109.73,0,100.0,0.00
+"DECLARE ""_django_curs_140402279577280_sync_3"" NO SCROLL CURSOR WITH HOLD FOR SELECT ""discount_promotionrule"".""id"", ""disc",1,97.89,97.89,0,100.0,0.00

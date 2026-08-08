@@ -1,0 +1,2 @@
+table_name,mode,granted,lock_count
+pg_locks,AccessShareLock,t,1

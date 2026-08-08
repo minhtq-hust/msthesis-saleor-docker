@@ -1,0 +1,35 @@
+{
+  "run_id": "baseline_0.0_run3_2026Jul24_143021",
+  "scenario": "normal",
+  "config_version": "Gunicorn+2xUvicornWorker",
+  "workers": 2,
+  "threads_per_worker": 12,
+  "vus": 50,
+  "spawn_rate": 5,
+  "duration_requested": "12m",
+  "duration_actual_seconds": 734,
+  "t_start_unix": 1784917821,
+  "t_end_unix": 1784918555,
+  "t_start_iso": "2026-07-24T14:30:21-04:00",
+  "t_end_iso": "2026-07-24T14:42:35-04:00",
+  "app_host": "osboxes@11.1.11.136",
+  "app_port": 8000,
+  "total_requests": "1367",
+  "total_failures": "0",
+  "aggregate_rps": "1.9025828176900672",
+  "aggregate_p95_ms": "68000",
+  "files": {
+    "stats": "baseline_0.0_run3_2026Jul24_143021_stats.csv",
+    "stats_history": "baseline_0.0_run3_2026Jul24_143021_stats_history.csv",
+    "failures": "baseline_0.0_run3_2026Jul24_143021_failures.csv",
+    "meta": "baseline_0.0_run3_2026Jul24_143021_meta.json",
+    "pg_slow_queries": "baseline_0.0_run3_2026Jul24_143021_pg_slow_queries.txt",
+    "pg_connections": "baseline_0.0_run3_2026Jul24_143021_pg_connections.txt",
+    "pg_locks": "baseline_0.0_run3_2026Jul24_143021_pg_locks.txt",
+    "redis_info": "baseline_0.0_run3_2026Jul24_143021_redis_info.txt"
+  },
+  "prometheus_query_range": {
+    "note": "Use t_start_unix and t_end_unix to query Prometheus API",
+    "example_cpu": "http://11.1.11.136:9090/api/v1/query_range?query=rate(container_cpu_usage_seconds_total{service=~\".+\"}[1m])*100&start=1784917821&end=1784918555&step=15"
+  }
+}
