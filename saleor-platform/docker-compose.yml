@@ -19,16 +19,20 @@ services:
       # shared volume between worker and api for media
       - saleor-media:/app/media
       - ./gunicorn_conf.py:/app/gunicorn_conf.py:ro
+      - ./rsa_private_key.pem:/run/secrets/rsa_private_key.pem:ro
     env_file:
       - common.env
       - backend.env
     environment:
       - DASHBOARD_URL=http://localhost:9000/
-      - ALLOWED_HOSTS=localhost,api,host.docker.internal,11.1.11.136
+      - ALLOWED_HOSTS=localhost,api,host.docker.internal,11.1.11.136,11.1.11.138
+      - DEBUG=False
+      - ALLOWED_CLIENT_HOSTS=localhost,api,host.docker.internal,11.1.11.136,11.1.11.138
     command:
       - sh
       - -c
       - |
+        export RSA_PRIVATE_KEY="$(cat /run/secrets/rsa_private_key.pem)" && \
         pip install --quiet --no-cache-dir \
           gunicorn \
           opentelemetry-instrumentation-psycopg==0.53b1 \
@@ -86,6 +90,7 @@ services:
       - sh
       - -c
       - |
+        export RSA_PRIVATE_KEY="$(cat /run/secrets/rsa_private_key.pem)" && \
         pip install --quiet --no-cache-dir \
           opentelemetry-instrumentation-celery==0.53b1 \
           opentelemetry-instrumentation-psycopg==0.53b1 \
@@ -108,6 +113,7 @@ services:
       # shared volume between worker and api for media
       - saleor-media:/app/media
       - ./gunicorn_conf.py:/app/gunicorn_conf.py:ro
+      - ./rsa_private_key.pem:/run/secrets/rsa_private_key.pem:ro
     environment:
       - OTEL_SERVICE_NAME=saleor-worker
 

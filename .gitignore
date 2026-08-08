@@ -12,7 +12,7 @@
 !loadtest/
 
 # Continue ignore some minor files and folders
-saleor-platform/*.env
+saleor-platform/*.pem
 saleor-platform/*.bk*
 saleor-platform/.github/
 

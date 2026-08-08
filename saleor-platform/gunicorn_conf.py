@@ -9,26 +9,24 @@ graceful_timeout = 30
 max_requests = 10000
 accesslog = None
 
-# --- OTel: init AFTER fork so each worker has its own exporter thread ---
+# --- OTel: monkey-patch AFTER fork, let Saleor's initialize_telemetry() own the TracerProvider ---
+#
+# Chuỗi sự kiện trong mỗi worker process:
+#   [1] post_fork() chạy → chỉ monkey-patch thư viện (KHÔNG set TracerProvider)
+#   [2] Worker load Django ASGI app → Saleor initialize_telemetry() chạy
+#           → _OTelSDKConfigurator.configure() đọc env vars (OTEL_TRACES_EXPORTER,
+#             OTEL_EXPORTER_OTLP_ENDPOINT...) → gọi set_tracer_provider() DUY NHẤT
+#
+# Tại sao monkey-patch PHẢI xảy ra trong post_fork() (TRƯỚC khi Django load)?
+#   - PsycopgInstrumentor().instrument() phải wrap hàm psycopg.execute TRƯỚC khi
+#     Django tạo database connections. Nếu instrument() chạy SAU khi connections
+#     đã được tạo, các connection cũ sẽ không được trace.
+#   - Các instrumentor dùng trace.get_tracer() tại THỜI ĐIỂM REQUEST (lazy lookup),
+#     nên TracerProvider chưa cần có mặt lúc instrument() được gọi.
+#
+# Kết quả: không còn warning "Overriding of current TracerProvider is not allowed"
+#          vì TracerProvider chỉ được set 1 lần duy nhất (bởi Saleor).
 def post_fork(server, worker):
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.resources import Resource
-
-    resource = Resource.create({
-        'service.name': os.environ.get('OTEL_SERVICE_NAME', 'saleor'),
-    })
-
-    endpoint = os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://otel-collector:4318')
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint + '/v1/traces'))
-    )
-    trace.set_tracer_provider(provider)
-
-    # Instrument the same libraries as before
     from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
     from opentelemetry.instrumentation.redis import RedisInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -41,4 +39,7 @@ def post_fork(server, worker):
     URLLib3Instrumentor().instrument()
     CeleryInstrumentor().instrument()
 
-    server.log.info('Worker %s: OTel initialized', worker.pid)
+    server.log.info(
+        'Worker %s: OTel libraries instrumented (TracerProvider will be set by Saleor)',
+        worker.pid,
+    )
